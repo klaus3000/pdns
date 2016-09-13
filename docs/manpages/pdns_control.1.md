@@ -113,6 +113,10 @@ respsizes
 retrieve *DOMAIN*
 :    Retrieve slave *DOMAIN* from its master. Done nearly immediately.
 
+retrieve-host *DOMAIN* *ADDRESS*
+:    Same as above but with operator specified IP *ADDRESS* as source, to be
+     used if you know better than PowerDNS. Useful when having multiple masters.
+
 set *VARIABLE* *VALUE*
 :    Set the configuration parameter *VARIABLE* to *VALUE*. Currently only the
      query-logging can be set.
