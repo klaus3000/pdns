@@ -228,12 +228,50 @@ string DLVersionHandler(const vector<string>&parts, Utility::pid_t ppid)
   return VERSION;
 }
 
-string DLNotifyRetrieveHandler(const vector<string>&parts, Utility::pid_t ppid)
+string DLRetrieveHostHandler(const vector<string>&parts, Utility::pid_t ppid)
+{
+  extern CommunicatorClass Communicator;
+  ostringstream os;
+  if(parts.size()!=3)
+    return "syntax: retrieve-host domain ip";
+  if(!::arg().mustDo("slave"))
+      return "PowerDNS not configured as slave";
+
+  DNSName domain;
+  try {
+    domain = DNSName(parts[1]);
+  } catch (...) {
+    return "Failed to parse domain as valid DNS name";
+  }
+
+  DomainInfo di;
+  UeberBackend B;
+  if(!B.getDomainInfo(domain, di))
+    return "Domain '"+domain.toString()+"' unknown";
+
+  if(di.masters.empty())
+    return "Domain '"+domain.toString()+"' is not a slave domain (or has no master defined)";
+
+  try {
+    ComboAddress ca(parts[2]);
+  } catch(...)
+  {
+    return "Unable to convert '"+parts[2]+"' to an IP address";
+  }
+
+  L<<Logger::Warning<<"AXFR-suck request from host "<<parts[2]<<" for domain '"<<parts[1]<<"' received"<<endl;
+  Communicator.addSuckRequest(domain, parts[2]);
+  return "Added retrieval request for '"+domain.toString()+"' from master "+parts[2];
+}
+
+string DLRetrieveHandler(const vector<string>&parts, Utility::pid_t ppid)
 {
   extern CommunicatorClass Communicator;
   ostringstream os;
   if(parts.size()!=2)
     return "syntax: retrieve domain";
+  if(!::arg().mustDo("slave"))
+      return "PowerDNS not configured as slave";
 
   DNSName domain;
   try {
@@ -250,6 +288,7 @@ string DLNotifyRetrieveHandler(const vector<string>&parts, Utility::pid_t ppid)
   if(di.masters.empty())
     return "Domain '"+domain.toString()+"' is not a slave domain (or has no master defined)";
 
+  L<<Logger::Warning<<"AXFR-suck request for domain '"<<parts[1]<<"' received"<<endl;
   random_shuffle(di.masters.begin(), di.masters.end());
   Communicator.addSuckRequest(domain, di.masters.front()); 
   return "Added retrieval request for '"+domain.toString()+"' from master "+di.masters.front();
