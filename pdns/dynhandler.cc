@@ -254,6 +254,7 @@ string DLRetrieveHandler(const vector<string>&parts, Utility::pid_t ppid)
 
   random_shuffle(di.masters.begin(), di.masters.end());
   Communicator.addSuckRequest(domain, di.masters.front()); 
+  L<<Logger::Warning<<"Retrieve request for zone '"<<parts[1]<<"' received, using master "<<di.masters.front()<<endl;
   return "Added retrieval request for '"+domain.toString()+"' from master "+di.masters.front();
 }
 
