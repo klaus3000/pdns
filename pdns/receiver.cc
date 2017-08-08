@@ -582,6 +582,7 @@ int main(int argc, char **argv)
     DynListener::registerFunc("RESPSIZES", &DLRSizesHandler, "get histogram of response sizes");
     DynListener::registerFunc("REMOTES", &DLRemotesHandler, "get top remotes");
     DynListener::registerFunc("SET",&DLSettingsHandler, "set config variables", "<var> <value>");
+    DynListener::registerFunc("RETRIEVE-HOST",&DLRetrieveHostHandler, "retrieve slave domain from host", "<domain> <host>");
     DynListener::registerFunc("RETRIEVE",&DLRetrieveHandler, "retrieve slave domain", "<domain>");
     DynListener::registerFunc("CURRENT-CONFIG",&DLCurrentConfigHandler, "retrieve the current configuration");
     DynListener::registerFunc("LIST-ZONES",&DLListZones, "show list of zones", "[master|slave|native]");

@@ -147,7 +147,13 @@ Get a histogram of the response sizes.
 retrieve *DOMAIN*
 ^^^^^^^^^^^^^^^^^
 
-Retrieve slave *DOMAIN* from its master. Done nearly immediately.
+Retrieve slave *DOMAIN* from its master. If multiple masters are
+configured, one is randomly chosen. Done nearly immediately.
+
+retrieve *DOMAIN* *HOST*
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+Retrieve slave *DOMAIN* from a certain master. Done nearly immediately.
 
 set *VARIABLE* *VALUE*
 ^^^^^^^^^^^^^^^^^^^^^^

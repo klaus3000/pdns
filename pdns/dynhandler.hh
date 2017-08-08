@@ -53,6 +53,7 @@ string DLRediscoverHandler(const vector<string>&parts, Utility::pid_t ppid);
 string DLVersionHandler(const vector<string>&parts, Utility::pid_t ppid);
 string DLPurgeHandler(const vector<string>&parts, Utility::pid_t ppid);
 string DLRetrieveHandler(const vector<string>&parts, Utility::pid_t ppid);
+string DLRetrieveHostHandler(const vector<string>&parts, Utility::pid_t ppid);
 string DLCurrentConfigHandler(const vector<string>&parts, Utility::pid_t ppid);
 string DLListZones(const vector<string>&parts, Utility::pid_t ppid);
 string DLTokenLogin(const vector<string>&parts, Utility::pid_t ppid);

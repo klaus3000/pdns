@@ -228,6 +228,42 @@ string DLVersionHandler(const vector<string>&parts, Utility::pid_t ppid)
   return VERSION;
 }
 
+string DLRetrieveHostHandler(const vector<string>&parts, Utility::pid_t ppid)
+{
+  extern CommunicatorClass Communicator;
+  ostringstream os;
+  if(parts.size()!=3)
+    return "syntax: retrieve-host domain ip";
+  if(!::arg().mustDo("slave"))
+      return "PowerDNS not configured as slave";
+
+  DNSName domain;
+  try {
+    domain = DNSName(parts[1]);
+  } catch (...) {
+    return "Failed to parse domain as valid DNS name";
+  }
+
+  DomainInfo di;
+  UeberBackend B;
+  if(!B.getDomainInfo(domain, di))
+    return "Domain '"+domain.toString()+"' unknown";
+
+  if(di.masters.empty())
+    return "Domain '"+domain.toString()+"' is not a slave domain (or has no master defined)";
+
+  try {
+    ComboAddress ca(parts[2]);
+  } catch(...)
+  {
+    return "Unable to convert '"+parts[2]+"' to an IP address";
+  }
+
+  Communicator.addSuckRequest(domain, parts[2]);
+  L<<Logger::Warning<<"Retrieve-host request for zone '"<<parts[1]<<"' from master "<<parts[2]<<" received"<<endl;
+  return "Added retrieval request for '"+domain.toString()+"' from master "+parts[2];
+}
+
 string DLRetrieveHandler(const vector<string>&parts, Utility::pid_t ppid)
 {
   extern CommunicatorClass Communicator;
