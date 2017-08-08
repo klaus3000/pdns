@@ -234,6 +234,8 @@ string DLRetrieveHandler(const vector<string>&parts, Utility::pid_t ppid)
   ostringstream os;
   if(parts.size()!=2)
     return "syntax: retrieve domain";
+  if(!::arg().mustDo("slave"))
+      return "PowerDNS not configured as slave";
 
   DNSName domain;
   try {
