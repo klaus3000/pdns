@@ -228,7 +228,7 @@ string DLVersionHandler(const vector<string>&parts, Utility::pid_t ppid)
   return VERSION;
 }
 
-string DLNotifyRetrieveHandler(const vector<string>&parts, Utility::pid_t ppid)
+string DLRetrieveHandler(const vector<string>&parts, Utility::pid_t ppid)
 {
   extern CommunicatorClass Communicator;
   ostringstream os;
