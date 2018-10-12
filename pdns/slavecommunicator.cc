@@ -662,6 +662,7 @@ struct SlaveSenderReceiver
     uint32_t theirSerial;
     uint32_t theirInception;
     uint32_t theirExpire;
+    ComboAddress master;
   };
 
   map<uint32_t, Answer> d_freshness;
@@ -676,11 +677,11 @@ struct SlaveSenderReceiver
 
   Identifier send(DomainNotificationInfo& dni)
   {
-    random_shuffle(dni.di.masters.begin(), dni.di.masters.end());
     try {
+      g_log<<Logger::Info<<"Sending SOA request for '"<<dni.di.zone<<"' to "<<dni.di.masters.back()<<endl;
       return std::make_tuple(dni.di.zone,
-                             *dni.di.masters.begin(),
-                             d_resolver.sendResolve(*dni.di.masters.begin(),
+                             dni.di.masters.back(),
+                             d_resolver.sendResolve(dni.di.masters.back(),
                                                     dni.localaddr,
                                                     dni.di.zone,
                                                     QType::SOA,
@@ -696,14 +697,30 @@ struct SlaveSenderReceiver
   bool receive(Identifier& id, Answer& a)
   {
     if(d_resolver.tryGetSOASerial(&(std::get<0>(id)), &(std::get<1>(id)), &a.theirSerial, &a.theirInception, &a.theirExpire, &(std::get<2>(id)))) {
+      g_log<<Logger::Debug<<"Got response for zone '"<< std::get<0>(id) <<"' with serial "<<a.theirSerial<<endl;
       return 1;
     }
     return 0;
   }
 
-  void deliverAnswer(DomainNotificationInfo& dni, const Answer& a, unsigned int usec)
+  void deliverAnswer(DomainNotificationInfo& dni, Answer& a, unsigned int usec)
   {
-    d_freshness[dni.di.id]=a;
+    g_log<<Logger::Info<<"Received serial "<<a.theirSerial<<" for zone '"<<dni.di.zone<<"' in "<<usec<<" usec from master "<<dni.di.masters.back()<<endl;
+    a.master = dni.di.masters.back();
+    // Check if we already got an answer for this domain
+    if (d_freshness.count(dni.di.id)) {
+      // Note: This check may be incorrect if one of the masters had a serial overflow,
+      // but it will recover once all masters have wrapped their serial.
+      if (a.theirSerial > d_freshness[dni.di.id].theirSerial) {
+        g_log<<Logger::Debug<<"Received serial "<<a.theirSerial<<" for zone '"<<dni.di.zone<<"' is bigger than previous serial "<<d_freshness[dni.di.id].theirSerial<<endl;
+        d_freshness[dni.di.id]=a;
+      } else {
+        g_log<<Logger::Debug<<"Received serial "<<a.theirSerial<<" for zone '"<<dni.di.zone<<"' is equal or lower than previous serial "<<d_freshness[dni.di.id].theirSerial<<endl;
+      }
+    } else {
+      g_log<<Logger::Debug<<"Received serial "<<a.theirSerial<<" for zone '"<<dni.di.zone<<"' is first answer"<<endl;
+      d_freshness[dni.di.id]=a;
+    }
   }
 
   Resolver d_resolver;
@@ -745,7 +762,8 @@ void CommunicatorClass::slaveRefresh(PacketHandler *P)
 
   UeberBackend *B=P->getBackend();
   vector<DomainInfo> rdomains;
-  vector<DomainNotificationInfo> sdomains;
+  vector<DomainNotificationInfo> sdomains; // List of domains to check
+  vector<DomainNotificationInfo> sdomainsmasters; // List of domains to check, with multiple entries per domain in case the domain has multiple masters
   set<DNSPacket, cmp> trysuperdomains;
   {
     Lock l(&d_lock);
@@ -784,6 +802,7 @@ void CommunicatorClass::slaveRefresh(PacketHandler *P)
   }
   if(rdomains.empty()) { // if we have priority domains, check them first
     B->getUnfreshSlaveInfos(&rdomains);
+    g_log<<Logger::Info<<"No domains explicitely queued for freshness checks. Checking "<<rdomains.size()<<" unfresh slave zones reported by backend"<<endl;
   }
   DNSSECKeeper dk(B); // NOW HEAR THIS! This DK uses our B backend, so no interleaved access!
   {
@@ -804,6 +823,7 @@ void CommunicatorClass::slaveRefresh(PacketHandler *P)
       if(di.masters.empty()) // slave domains w/o masters are ignored
         continue;
       // remove unfresh domains already queued for AXFR, no sense polling them again
+      // Note: If a zone has multiple masters this simple check may fail
       sr.master=*di.masters.begin();
       if(nameindex.count(sr)) {  // this does NOT however protect us against AXFRs already in progress!
         continue;
@@ -843,6 +863,17 @@ void CommunicatorClass::slaveRefresh(PacketHandler *P)
       }
 
       sdomains.push_back(dni);
+      if (!::arg().mustDo("check-every-master")) {
+        random_shuffle(dni.di.masters.begin(), dni.di.masters.end());
+        g_log<<Logger::Debug<<"Queueing domain '"<<dni.di.zone<<"' for SOA check to master "<<dni.di.masters.back()<<endl;
+        sdomainsmasters.push_back(dni);
+      } else while (dni.di.masters.size() > 0) {
+        // If a zone has multiple masters we check all of them: As the SlaveSenderReceiver will use the last entry from the list
+        // of masters, we strip the last entry from masters before adding the dni again to the list of to-be-checked domains.
+        g_log<<Logger::Debug<<"Queueing domain '"<<dni.di.zone<<"' for SOA check to master "<<dni.di.masters.back()<<endl;
+        sdomainsmasters.push_back(dni);
+        dni.di.masters.pop_back();
+      }
     }
   }
   if(sdomains.empty())
@@ -858,15 +889,16 @@ void CommunicatorClass::slaveRefresh(PacketHandler *P)
     Lock l(&d_lock);
     g_log<<Logger::Warning<<sdomains.size()<<" slave domain"<<(sdomains.size()>1 ? "s" : "")<<" need"<<
       (sdomains.size()>1 ? "" : "s")<<
-      " checking, "<<d_suckdomains.size()<<" queued for AXFR"<<endl;
+      " checking (in total "<<sdomainsmasters.size()<<" masters), "<<d_suckdomains.size()<<" queued for AXFR"<<endl;
   }
 
   SlaveSenderReceiver ssr;
 
-  Inflighter<vector<DomainNotificationInfo>, SlaveSenderReceiver> ifl(sdomains, ssr);
+  Inflighter<vector<DomainNotificationInfo>, SlaveSenderReceiver> ifl(sdomainsmasters, ssr);
 
   ifl.d_maxInFlight = 200;
 
+  uint64_t stdexceptions=0, pdnsexceptions=0;
   for(;;) {
     try {
       ifl.run();
@@ -874,12 +906,17 @@ void CommunicatorClass::slaveRefresh(PacketHandler *P)
     }
     catch(std::exception& e) {
       g_log<<Logger::Error<<"While checking domain freshness: " << e.what()<<endl;
+      stdexceptions++;
     }
     catch(PDNSException &re) {
       g_log<<Logger::Error<<"While checking domain freshness: " << re.reason<<endl;
+      pdnsexceptions++;
     }
   }
-  g_log<<Logger::Warning<<"Received serial number updates for "<<ssr.d_freshness.size()<<" zone"<<addS(ssr.d_freshness.size())<<", had "<<ifl.getTimeouts()<<" timeout"<<addS(ifl.getTimeouts())<<endl;
+  g_log<<Logger::Warning<<"Received serial number updates for "<<ssr.d_freshness.size()<<" zone"<<addS(ssr.d_freshness.size())
+    <<", had "<<ifl.getTimeouts()<<" timeout"<<addS(ifl.getTimeouts())
+    <<", "<<stdexceptions<<" std-exception"<<addS(stdexceptions)<<" and "
+    <<pdnsexceptions<<" pdns-exception"<<addS(pdnsexceptions)<<endl;
 
   typedef DomainNotificationInfo val_t;
   time_t now = time(0);
@@ -956,20 +993,20 @@ void CommunicatorClass::slaveRefresh(PacketHandler *P)
       }
       else if(maxInception && ! ssr.d_freshness[di.id].theirInception ) {
         g_log<<Logger::Warning<<"Domain '"<< di.zone<<"' is stale, master is no longer signed and all signatures have expired, serial is "<<ourserial<<endl;
-        addSuckRequest(di.zone, *di.masters.begin());
+        addSuckRequest(di.zone, ssr.d_freshness[di.id].master);
       }
       else if(dk.doesDNSSEC() && ! maxInception && ssr.d_freshness[di.id].theirInception) {
         g_log<<Logger::Warning<<"Domain '"<< di.zone<<"' is stale, master has signed, serial is "<<ourserial<<endl;
-        addSuckRequest(di.zone, *di.masters.begin());
+        addSuckRequest(di.zone, ssr.d_freshness[di.id].master);
       }
       else {
         g_log<<Logger::Warning<<"Domain '"<< di.zone<<"' is fresh, but RRSIGs differ, so DNSSEC is stale, serial is "<<ourserial<<endl;
-        addSuckRequest(di.zone, *di.masters.begin());
+        addSuckRequest(di.zone, ssr.d_freshness[di.id].master);
       }
     }
     else {
       g_log<<Logger::Warning<<"Domain '"<< di.zone<<"' is stale, master serial "<<theirserial<<", our serial "<< ourserial <<endl;
-      addSuckRequest(di.zone, *di.masters.begin());
+      addSuckRequest(di.zone, ssr.d_freshness[di.id].master);
     }
   }
 }

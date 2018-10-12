@@ -212,6 +212,24 @@ hostnames). You may specify an alternate port by appending :port, ex:
 If sending carbon updates, this is the interval between them in seconds.
 See :ref:`metricscarbon`.
 
+.. _setting-check-every-master:
+
+``check-every-master``
+-------------------
+
+-  Boolean
+-  Default: no
+
+If a slave zone has multiple masters configured, PowerDNS by default randomly choose
+one of the master for the SOA check. If the zone will be queued for zone transfer,
+the checked master will also be used for the zone transfer.
+
+If this option is enabled, PowerDNS will use all configured master servers for the
+SOA check. The master responding with the highest serial will be used for a possible
+zone transfer. If all masters respond with the same serial, the first responding master
+will be used for the zone transfer. If masters do not respond, the zone will not suffer from
+incremental backoff as long as one master responds.
+
 .. _setting-chroot:
 
 ``chroot``

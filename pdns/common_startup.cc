@@ -128,6 +128,7 @@ void declareArguments()
   ::arg().set("also-notify", "When notifying a domain, also notify these nameservers")="";
   ::arg().set("allow-notify-from","Allow AXFR NOTIFY from these IP ranges. If empty, drop all incoming notifies.")="0.0.0.0/0,::/0";
   ::arg().set("slave-cycle-interval","Schedule slave freshness checks once every .. seconds")="60";
+  ::arg().set("check-every-master","Enable SOA checks against every configured master of a slave zone")="no";
 
   ::arg().set("tcp-control-address","If set, PowerDNS can be controlled over TCP on this address")="";
   ::arg().set("tcp-control-port","If set, PowerDNS can be controlled over TCP on this address")="53000";
